@@ -19,6 +19,7 @@ type ContainerSizeAndOffset = {
 type Params = {
   maxScrollSize?: number,
   cellCount: number,
+  cellOffset: number,
   cellSizeGetter: CellSizeGetter,
   estimatedCellSize: number,
 };
@@ -44,6 +45,7 @@ export default class ScalingCellSizeAndPositionManager {
 
   configure(params: {
     cellCount: number,
+    cellOffset: number,
     estimatedCellSize: number,
     cellSizeGetter: CellSizeGetter,
   }) {
@@ -90,10 +92,10 @@ export default class ScalingCellSizeAndPositionManager {
   }
 
   /** See CellSizeAndPositionManager#getTotalSize */
-  getTotalSize(): number {
+  getTotalSize(log?: true): number {
     return Math.min(
       this._maxScrollSize,
-      this._cellSizeAndPositionManager.getTotalSize(),
+      this._cellSizeAndPositionManager.getTotalSize(log),
     );
   }
 

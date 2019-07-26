@@ -21,6 +21,7 @@ export default function defaultCellRangeRenderer({
   rowSizeAndPositionManager,
   rowStartIndex,
   rowStopIndex,
+  rowOffset,
   styleCache,
   verticalOffsetAdjustment,
   visibleColumnIndices,
@@ -39,7 +40,11 @@ export default function defaultCellRangeRenderer({
 
   const canCacheStyle = !isScrolling && !areOffsetsAdjusted;
 
-  for (let rowIndex = rowStartIndex; rowIndex <= rowStopIndex; rowIndex++) {
+  for (
+    let rowIndex = rowStartIndex - rowOffset;
+    rowIndex <= rowStopIndex - rowOffset;
+    rowIndex++
+  ) {
     let rowDatum = rowSizeAndPositionManager.getSizeAndPositionOfCell(rowIndex);
 
     for (

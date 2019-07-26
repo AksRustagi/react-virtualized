@@ -34,6 +34,7 @@ export type CellRangeRendererParams = {
   rowSizeAndPositionManager: ScalingCellSizeAndPositionManager,
   rowStartIndex: number,
   rowStopIndex: number,
+  rowOffset: number,
   scrollLeft: number,
   scrollTop: number,
   styleCache: StyleCache,

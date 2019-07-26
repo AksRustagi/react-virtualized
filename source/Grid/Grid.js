@@ -191,6 +191,9 @@ type Props = {
   /** Number of rows in grid.  */
   rowCount: number,
 
+  /** Number of rows in grid.  */
+  rowOffset: number,
+
   /** Wait this amount of time after the last scroll event before resetting Grid `pointer-events`. */
   scrollingResetTimeInterval: number,
 
@@ -276,6 +279,7 @@ class Grid extends React.PureComponent<Props, State> {
     overscanIndicesGetter: defaultOverscanIndicesGetter,
     overscanRowCount: 10,
     role: 'grid',
+    rowOffset: 0,
     scrollingResetTimeInterval: DEFAULT_SCROLLING_RESET_TIME_INTERVAL,
     scrollToAlignment: 'auto',
     scrollToColumn: -1,
@@ -322,11 +326,13 @@ class Grid extends React.PureComponent<Props, State> {
     super(props);
     const columnSizeAndPositionManager = new ScalingCellSizeAndPositionManager({
       cellCount: props.columnCount,
+      cellOffset: 0,
       cellSizeGetter: params => Grid._wrapSizeGetter(props.columnWidth)(params),
       estimatedCellSize: Grid._getEstimatedColumnSize(props),
     });
     const rowSizeAndPositionManager = new ScalingCellSizeAndPositionManager({
       cellCount: props.rowCount,
+      cellOffset: props.rowOffset,
       cellSizeGetter: params => Grid._wrapSizeGetter(props.rowHeight)(params),
       estimatedCellSize: Grid._getEstimatedRowSize(props),
     });
@@ -397,7 +403,9 @@ class Grid extends React.PureComponent<Props, State> {
    * Gets estimated total rows' height.
    */
   getTotalRowsHeight() {
-    return this.state.instanceProps.rowSizeAndPositionManager.getTotalSize();
+    return this.state.instanceProps.rowSizeAndPositionManager.getTotalSize(
+      true,
+    );
   }
 
   /**
@@ -501,6 +509,8 @@ class Grid extends React.PureComponent<Props, State> {
    */
   // @TODO (bvaughn) Add automated test coverage for this.
   invalidateCellSizeAfterRender({columnIndex, rowIndex}: CellPosition) {
+    console.log(columnIndex, rowIndex)
+    console.log(this._deferredInvalidateColumnIndex, this._deferredInvalidateRowIndex)
     this._deferredInvalidateColumnIndex =
       typeof this._deferredInvalidateColumnIndex === 'number'
         ? Math.min(this._deferredInvalidateColumnIndex, columnIndex)
@@ -517,13 +527,13 @@ class Grid extends React.PureComponent<Props, State> {
    * This method ensures that the next call to getTotalSize() returns an exact size (as opposed to just an estimated one).
    */
   measureAllCells() {
-    const {columnCount, rowCount} = this.props;
+    const {columnCount, rowCount, rowOffset} = this.props;
     const {instanceProps} = this.state;
     instanceProps.columnSizeAndPositionManager.getSizeAndPositionOfCell(
       columnCount - 1,
     );
     instanceProps.rowSizeAndPositionManager.getSizeAndPositionOfCell(
-      rowCount - 1,
+      rowCount - 1 - rowOffset,
     );
   }
 
@@ -860,12 +870,14 @@ class Grid extends React.PureComponent<Props, State> {
 
     instanceProps.columnSizeAndPositionManager.configure({
       cellCount: nextProps.columnCount,
+      cellOffset: 0,
       estimatedCellSize: Grid._getEstimatedColumnSize(nextProps),
       cellSizeGetter: Grid._wrapSizeGetter(nextProps.columnWidth),
     });
 
     instanceProps.rowSizeAndPositionManager.configure({
       cellCount: nextProps.rowCount,
+      cellOffset: nextProps.rowOffset,
       estimatedCellSize: Grid._getEstimatedRowSize(nextProps),
       cellSizeGetter: Grid._wrapSizeGetter(nextProps.rowHeight),
     });
@@ -1004,7 +1016,7 @@ class Grid extends React.PureComponent<Props, State> {
     this._calculateChildrenToRender(this.props, this.state);
 
     const totalColumnsWidth = instanceProps.columnSizeAndPositionManager.getTotalSize();
-    const totalRowsHeight = instanceProps.rowSizeAndPositionManager.getTotalSize();
+    const totalRowsHeight = instanceProps.rowSizeAndPositionManager.getTotalSize(true);
 
     // Force browser to hide scrollbars when we know they aren't necessary.
     // Otherwise once scrollbars appear they may not disappear again.
@@ -1091,6 +1103,7 @@ class Grid extends React.PureComponent<Props, State> {
       overscanIndicesGetter,
       overscanRowCount,
       rowCount,
+      rowOffset,
       width,
       isScrollingOptOut,
     } = props;
@@ -1232,6 +1245,7 @@ class Grid extends React.PureComponent<Props, State> {
         isScrollingOptOut,
         parent: this,
         rowSizeAndPositionManager: instanceProps.rowSizeAndPositionManager,
+        rowOffset,
         rowStartIndex,
         rowStopIndex,
         scrollLeft,
@@ -1304,6 +1318,7 @@ class Grid extends React.PureComponent<Props, State> {
       this._deferredInvalidateColumnIndex = null;
       this._deferredInvalidateRowIndex = null;
 
+      console.log('RECOMPUTING grid sizes')
       this.recomputeGridSize({columnIndex, rowIndex});
     }
   }
@@ -1530,11 +1545,18 @@ class Grid extends React.PureComponent<Props, State> {
   }
 
   static _getCalculatedScrollTop(nextProps: Props, prevState: State) {
-    const {height, rowCount, scrollToAlignment, scrollToRow, width} = nextProps;
+    const {
+      height,
+      rowCount,
+      rowOffset,
+      scrollToAlignment,
+      scrollToRow,
+      width,
+    } = nextProps;
     const {scrollTop, instanceProps} = prevState;
 
     if (rowCount > 0) {
-      const finalRow = rowCount - 1;
+      const finalRow = rowCount - 1 - rowOffset;
       const targetIndex =
         scrollToRow < 0 ? finalRow : Math.min(finalRow, scrollToRow);
       const totalColumnsWidth = instanceProps.columnSizeAndPositionManager.getTotalSize();

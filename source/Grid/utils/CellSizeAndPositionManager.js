@@ -4,14 +4,16 @@ import type {Alignment, CellSizeGetter, VisibleCellRange} from '../types';
 
 type CellSizeAndPositionManagerParams = {
   cellCount: number,
+  cellOffset: number,
   cellSizeGetter: CellSizeGetter,
   estimatedCellSize: number,
 };
 
 type ConfigureParams = {
   cellCount: number,
-  estimatedCellSize: number,
+  cellOffset: number,
   cellSizeGetter: CellSizeGetter,
+  estimatedCellSize: number,
 };
 
 type GetUpdatedOffsetForIndex = {
@@ -47,16 +49,20 @@ export default class CellSizeAndPositionManager {
   _lastBatchedIndex = -1;
 
   _cellCount: number;
+  _cellOffset: number;
   _cellSizeGetter: CellSizeGetter;
   _estimatedCellSize: number;
 
   constructor({
     cellCount,
+    cellOffset,
     cellSizeGetter,
     estimatedCellSize,
   }: CellSizeAndPositionManagerParams) {
     this._cellSizeGetter = cellSizeGetter;
     this._cellCount = cellCount;
+    this._cellOffset = cellOffset;
+    this._lastMeasuredIndex = -cellOffset - 1;
     this._estimatedCellSize = estimatedCellSize;
   }
 
@@ -64,9 +70,16 @@ export default class CellSizeAndPositionManager {
     return false;
   }
 
-  configure({cellCount, estimatedCellSize, cellSizeGetter}: ConfigureParams) {
+  configure({
+    cellCount,
+    cellOffset,
+    estimatedCellSize,
+    cellSizeGetter,
+  }: ConfigureParams) {
     this._cellCount = cellCount;
+    this._cellOffset = cellOffset;
     this._estimatedCellSize = estimatedCellSize;
+    this._lastMeasuredIndex = -cellOffset - 1;
     this._cellSizeGetter = cellSizeGetter;
   }
 
@@ -91,18 +104,20 @@ export default class CellSizeAndPositionManager {
    * It just-in-time calculates (or used cached values) for cells leading up to the index.
    */
   getSizeAndPositionOfCell(index: number): SizeAndPositionData {
-    if (index < 0 || index >= this._cellCount) {
+    const lowerBound = -this._cellOffset;
+    const upperBound = this._cellCount - this._cellOffset;
+    if (index < lowerBound || index >= upperBound) {
       throw Error(
-        `Requested index ${index} is outside of range 0..${this._cellCount}`,
+        `Requested index ${index} is outside of range ${lowerBound}..${upperBound}`,
       );
     }
 
-    if (index > this._lastMeasuredIndex) {
-      let lastMeasuredCellSizeAndPosition = this.getSizeAndPositionOfLastMeasuredCell();
-      let offset =
-        lastMeasuredCellSizeAndPosition.offset +
-        lastMeasuredCellSizeAndPosition.size;
+    let lastMeasuredCellSizeAndPosition = this.getSizeAndPositionOfLastMeasuredCell();
+    let offset =
+      lastMeasuredCellSizeAndPosition.offset +
+      lastMeasuredCellSizeAndPosition.size;
 
+    if (index > this._lastMeasuredIndex) {
       for (var i = this._lastMeasuredIndex + 1; i <= index; i++) {
         let size = this._cellSizeGetter({index: i});
 
@@ -125,16 +140,15 @@ export default class CellSizeAndPositionManager {
 
           offset += size;
 
-          this._lastMeasuredIndex = index;
+          this._lastMeasuredIndex = i;
         }
       }
     }
-
     return this._cellSizeAndPositionData[index];
   }
 
   getSizeAndPositionOfLastMeasuredCell(): SizeAndPositionData {
-    return this._lastMeasuredIndex >= 0
+    return this._lastMeasuredIndex >= -this._cellOffset
       ? this._cellSizeAndPositionData[this._lastMeasuredIndex]
       : {
           offset: 0,
@@ -147,14 +161,25 @@ export default class CellSizeAndPositionManager {
    * This value will be completely estimated initially.
    * As cells are measured, the estimate will be updated.
    */
-  getTotalSize(): number {
+  getTotalSize(log?: boolean): number {
     const lastMeasuredCellSizeAndPosition = this.getSizeAndPositionOfLastMeasuredCell();
     const totalSizeOfMeasuredCells =
       lastMeasuredCellSizeAndPosition.offset +
       lastMeasuredCellSizeAndPosition.size;
-    const numUnmeasuredCells = this._cellCount - this._lastMeasuredIndex - 1;
+    const numUnmeasuredCells =
+      this._cellCount - (this._cellOffset + this._lastMeasuredIndex + 1);
     const totalSizeOfUnmeasuredCells =
       numUnmeasuredCells * this._estimatedCellSize;
+    if (false) {
+      console.log(this._cellCount, this._cellOffset, this._lastMeasuredIndex);
+      console.log('num unmeasured', numUnmeasuredCells);
+      console.log('total measured', totalSizeOfMeasuredCells);
+      console.log('total unmeasured', totalSizeOfUnmeasuredCells);
+      console.log(
+        'total',
+        totalSizeOfMeasuredCells + totalSizeOfUnmeasuredCells,
+      );
+    }
     return totalSizeOfMeasuredCells + totalSizeOfUnmeasuredCells;
   }
 
@@ -217,7 +242,7 @@ export default class CellSizeAndPositionManager {
     const maxOffset = offset + containerSize;
     const start = this._findNearestCell(offset);
 
-    const datum = this.getSizeAndPositionOfCell(start);
+    const datum = this.getSizeAndPositionOfCell(start - this._cellOffset);
     offset = datum.offset + datum.size;
 
     let stop = start;
@@ -225,7 +250,7 @@ export default class CellSizeAndPositionManager {
     while (offset < maxOffset && stop < this._cellCount - 1) {
       stop++;
 
-      offset += this.getSizeAndPositionOfCell(stop).size;
+      offset += this.getSizeAndPositionOfCell(stop - this._cellOffset).size;
     }
 
     return {
@@ -240,13 +265,16 @@ export default class CellSizeAndPositionManager {
    * It will not immediately perform any calculations; they'll be performed the next time getSizeAndPositionOfCell() is called.
    */
   resetCell(index: number): void {
+    console.error('REEEEESETTTING')
     this._lastMeasuredIndex = Math.min(this._lastMeasuredIndex, index - 1);
   }
 
   _binarySearch(high: number, low: number, offset: number): number {
     while (low <= high) {
       const middle = low + Math.floor((high - low) / 2);
-      const currentOffset = this.getSizeAndPositionOfCell(middle).offset;
+      const currentOffset = this.getSizeAndPositionOfCell(
+        middle - this._cellOffset,
+      ).offset;
 
       if (currentOffset === offset) {
         return middle;
@@ -269,7 +297,7 @@ export default class CellSizeAndPositionManager {
 
     while (
       index < this._cellCount &&
-      this.getSizeAndPositionOfCell(index).offset < offset
+      this.getSizeAndPositionOfCell(index - this._cellOffset).offset < offset
     ) {
       index += interval;
       interval *= 2;
@@ -298,16 +326,26 @@ export default class CellSizeAndPositionManager {
     offset = Math.max(0, offset);
 
     const lastMeasuredCellSizeAndPosition = this.getSizeAndPositionOfLastMeasuredCell();
-    const lastMeasuredIndex = Math.max(0, this._lastMeasuredIndex);
+    const lastMeasuredIndex = Math.max(
+      -this._cellOffset,
+      this._lastMeasuredIndex,
+    );
 
     if (lastMeasuredCellSizeAndPosition.offset >= offset) {
       // If we've already measured cells within this range just use a binary search as it's faster.
-      return this._binarySearch(lastMeasuredIndex, 0, offset);
+      return this._binarySearch(
+        lastMeasuredIndex + this._cellOffset,
+        0,
+        offset,
+      );
     } else {
       // If we haven't yet measured this high, fallback to an exponential search with an inner binary search.
       // The exponential search avoids pre-computing sizes for the full set of cells as a binary search would.
       // The overall complexity for this approach is O(log n).
-      return this._exponentialSearch(lastMeasuredIndex, offset);
+      return this._exponentialSearch(
+        lastMeasuredIndex + this._cellOffset,
+        offset,
+      );
     }
   }
 }

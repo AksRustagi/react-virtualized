@@ -104,6 +104,7 @@ export default class CellMeasurer extends React.PureComponent<Props> {
     } = this.props;
 
     if (!cache.has(rowIndex, columnIndex)) {
+      console.log("didn't have cache of ", rowIndex, columnIndex);
       const {height, width} = this._getCellMeasurements();
 
       cache.set(rowIndex, columnIndex, width, height);
